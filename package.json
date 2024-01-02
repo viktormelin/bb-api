@@ -13,7 +13,7 @@
     "build:watch": "tsc -w",
     "build:release": "npm run clean && tsc",
     "lint": "eslint --ext .ts",
-    "prettier": "prettier --config .prettierrc --write .",
+    "prettier": "prettier --config .prettierrc",
     "test:watch": "jest --watch"
   },
   "repository": {
