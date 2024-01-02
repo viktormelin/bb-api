@@ -12,6 +12,7 @@ declare global {
     interface ProcessEnv {
       PORT: number;
       LOG_LEVEL: LevelWithSilentOrString;
+      DATABASE_URL: string;
     }
   }
 }
