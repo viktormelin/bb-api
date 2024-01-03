@@ -1,25 +1,14 @@
 import express, { json } from 'express';
 import cors from 'cors';
-import pino from 'pino';
 import { pinoHttp } from 'pino-http';
 import routes from './routes';
 import { createServer } from 'http';
 import dotenv from 'dotenv';
-import pinoPretty from 'pino-pretty';
+import { logger } from './utils/logger';
 
 dotenv.config();
 
 const app = express();
-const loggerOptions = pinoPretty({
-  colorize: true,
-});
-
-const logger = pino(
-  {
-    level: process.env.LOG_LEVEL || 'info',
-  },
-  loggerOptions,
-);
 
 const server = createServer(app);
 
