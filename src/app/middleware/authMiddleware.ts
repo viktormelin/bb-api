@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/explicit-function-return-type */
 import type { NextFunction, Request, Response } from 'express';
 import { authRef } from '../../utils/authorizer';
 import { logger } from '../../utils/logger';
