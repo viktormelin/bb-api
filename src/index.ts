@@ -2,10 +2,10 @@ import express, { json } from 'express';
 import cors from 'cors';
 import routes from './routes';
 import { createServer } from 'http';
-// import { logger } from './utils/logger';
-import dotenv from 'dotenv';
-dotenv.config();
+import { logger } from './utils/logger';
+import { config } from './utils/config';
 
+const port = Number(config.PORT);
 const app = express();
 const server = createServer(app);
 
@@ -28,7 +28,7 @@ for (const version of routeVersions) {
 }
 
 server.listen(
-  process.env.PORT,
-  () => console.log(`Server started on port ${process.env.PORT}`),
-  // logger.info(`Server started on port ${process.env.PORT}`),
+  port,
+  () => console.log(`Server started on port ${port}`),
+  // () => logger.info(`Server started on port ${port}`),
 );

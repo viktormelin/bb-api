@@ -1,20 +1,17 @@
-import { WinstonTransport as AxiomTransport } from '@axiomhq/winston';
+import { Logtail } from '@logtail/node';
+import { LogtailTransport } from '@logtail/winston';
 import winston from 'winston';
-import dotenv from 'dotenv';
-dotenv.config();
-
-const axiomTransport = new AxiomTransport({
-  token: process.env.AXIOM_TOKEN || '',
-  dataset: process.env.AXIOM_DATASET,
-});
+import { config } from './config';
 
 const { combine, errors, json } = winston.format;
-
+const logtail = new Logtail(config?.LOGGER_TOKEN || '');
 export const logger = winston.createLogger({
   level: 'info',
   format: combine(errors({ stack: true }), json()),
-  defaultMeta: { service: 'user-service' },
-  transports: [axiomTransport],
-  exceptionHandlers: [axiomTransport],
-  rejectionHandlers: [axiomTransport],
+  defaultMeta: {
+    service: 'express.js',
+  },
+  transports: [new LogtailTransport(logtail)],
+  exceptionHandlers: [new LogtailTransport(logtail)],
+  rejectionHandlers: [new LogtailTransport(logtail)],
 });
