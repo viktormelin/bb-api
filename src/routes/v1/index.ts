@@ -1,5 +1,5 @@
-import template from './template';
+import users from './users';
 
 export default {
-  template,
+  users,
 };

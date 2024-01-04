@@ -1,9 +1,9 @@
 import { Router } from 'express';
-import templateController from '../../app/controllers/templateController';
+import usersController from '../../app/controllers/usersController';
 import authMiddleware from '../../app/middleware/authMiddleware';
 
 const router = Router();
 
-router.get('/', authMiddleware, templateController.template);
+router.get('/me', authMiddleware, usersController.getSelf);
 
 export default router;
