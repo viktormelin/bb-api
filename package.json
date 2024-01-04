@@ -5,10 +5,10 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "test": "jest --coverage",
+    "test": "cross-env NODE_ENV=test jest --coverage",
     "clean": "rimraf coverage build tmp",
-    "start": "node dist/index.js",
-    "dev": "nodemon",
+    "start": "cross-env NODE_ENV=production node dist/index.js",
+    "dev": "cross-env NODE_ENV=development nodemon",
     "build": "tsc",
     "build:watch": "tsc -w",
     "build:release": "npm run clean && tsc",
@@ -53,7 +53,8 @@
   },
   "dependencies": {
     "@authorizerdev/authorizer-js": "^2.0.0",
-    "@axiomhq/winston": "^1.0.0-rc.1",
+    "@logtail/node": "^0.4.17",
+    "@logtail/winston": "^0.4.17",
     "@prisma/client": "^5.7.1",
     "axios": "^1.6.3",
     "cors": "^2.8.5",
