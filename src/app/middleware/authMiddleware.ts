@@ -28,9 +28,12 @@ const authMiddleware = async (
       // roles: [user] // specify roles that you want to validate jwt for, by default it will just verify jwt.
     });
 
+    if (!data?.is_valid)
+      return res.status(403).json({ error: 'Invalid JWT token' });
+
     if (errors.length) throw new Error(errors[0].message);
 
-    req.user = data?.claims;
+    // req.user = data?.claims;
   } catch (error) {
     logger.error(error);
     return res.status(403).json({ error: 'Invalid JWT token' });
