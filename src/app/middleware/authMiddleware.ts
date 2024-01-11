@@ -2,6 +2,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import { authRef } from '../../utils/authorizer';
 import { logger } from '../../utils/logger';
+import { JWTUser } from '../../types/IUser';
 
 const authMiddleware = async (
   req: Request,
@@ -33,7 +34,7 @@ const authMiddleware = async (
     if (!data?.is_valid)
       return res.status(403).json({ error: 'Invalid JWT token' });
 
-    // req.user = data?.claims;
+    req.user = data?.claims as JWTUser;
   } catch (error) {
     logger.error(error);
     return res.status(403).json({ error: 'Invalid JWT token' });
