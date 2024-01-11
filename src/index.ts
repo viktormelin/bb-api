@@ -1,4 +1,4 @@
-import express, { json } from 'express';
+import express, { json, urlencoded } from 'express';
 import cors from 'cors';
 import routes from './routes';
 import { createServer } from 'http';
@@ -10,6 +10,7 @@ const app = express();
 const server = createServer(app);
 
 app.use(json());
+app.use(urlencoded({ extended: true }));
 app.use(
   cors({
     origin: '*',
