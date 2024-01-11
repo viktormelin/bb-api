@@ -63,8 +63,8 @@ model authorizer_sessions {
 
 model authorizer_users {
   key                          String?
-  id                           String           @id @db.Char(36)
-  email                        String?          @unique
+  id                           String         @id @db.Char(36)
+  email                        String?        @unique
   email_verified_at            BigInt?
   password                     String?
   signup_methods               String?
@@ -83,8 +83,8 @@ model authorizer_users {
   updated_at                   BigInt?
   created_at                   BigInt?
   app_data                     String?
-  expense_splits               expense_splits[]
   group_users                  group_users[]
+  friends                      user_friends[]
 
   @@index([phone_number], map: "idx_authorizer_users_phone_number")
 }
@@ -127,14 +127,21 @@ model authorizer_webhooks {
   updated_at        BigInt?
 }
 
-model expense_splits {
+model user_friends {
   id                 String           @id @default(cuid())
-  expense            expenses         @relation(fields: [expensesId], references: [id])
   user               authorizer_users @relation(fields: [authorizer_usersId], references: [id])
+  authorizer_usersId String           @db.Char(36)
+}
+
+model expense_splits {
+  id                 String      @id @default(cuid())
+  expense            expenses    @relation(fields: [expensesId], references: [id])
+  user               group_users @relation(fields: [group_usersId], references: [id])
   money_total        Float
   money_share        Int
   expensesId         String
-  authorizer_usersId String           @db.Char(36)
+  authorizer_usersId String      @db.Char(36)
+  group_usersId      String
 }
 
 model group_users {
@@ -144,6 +151,7 @@ model group_users {
   authorizer_usersId String           @db.Char(36)
   groups             groups?          @relation(fields: [groupsId], references: [id])
   groupsId           String?
+  expense_splits     expense_splits[]
 }
 
 model expenses {
@@ -152,10 +160,13 @@ model expenses {
   description String?
   money_total Float
   money_split expense_splits[]
+  group       groups           @relation(fields: [groupsId], references: [id])
+  groupsId    String
 }
 
 model groups {
-  id    String        @id @default(cuid())
-  name  String
-  users group_users[]
+  id       String        @id @default(cuid())
+  name     String
+  users    group_users[]
+  expenses expenses[]
 }
