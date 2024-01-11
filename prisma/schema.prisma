@@ -44,7 +44,7 @@ model authorizer_otps {
   key          String?
   id           String  @id @db.Char(36)
   email        String? @unique
-  phone_number String? @unique(map: "unique_index_phone_number")
+  phone_number String? @unique(map: "idx_authorizer_otps_phone_number")
   otp          String?
   expires_at   BigInt?
   created_at   BigInt?
@@ -63,8 +63,8 @@ model authorizer_sessions {
 
 model authorizer_users {
   key                          String?
-  id                           String   @id @db.Char(36)
-  email                        String?  @unique
+  id                           String           @id @db.Char(36)
+  email                        String?          @unique
   email_verified_at            BigInt?
   password                     String?
   signup_methods               String?
@@ -83,6 +83,8 @@ model authorizer_users {
   updated_at                   BigInt?
   created_at                   BigInt?
   app_data                     String?
+  expense_splits               expense_splits[]
+  group_users                  group_users[]
 
   @@index([phone_number], map: "idx_authorizer_users_phone_number")
 }
@@ -123,4 +125,37 @@ model authorizer_webhooks {
   enabled           Boolean?
   created_at        BigInt?
   updated_at        BigInt?
+}
+
+model expense_splits {
+  id                 String           @id @default(cuid())
+  expense            expenses         @relation(fields: [expensesId], references: [id])
+  user               authorizer_users @relation(fields: [authorizer_usersId], references: [id])
+  money_total        Float
+  money_share        Int
+  expensesId         String
+  authorizer_usersId String           @db.Char(36)
+}
+
+model group_users {
+  id                 String           @id @default(cuid())
+  user               authorizer_users @relation(fields: [authorizer_usersId], references: [id])
+  role               String
+  authorizer_usersId String           @db.Char(36)
+  groups             groups?          @relation(fields: [groupsId], references: [id])
+  groupsId           String?
+}
+
+model expenses {
+  id          String           @id @default(cuid())
+  name        String
+  description String?
+  money_total Float
+  money_split expense_splits[]
+}
+
+model groups {
+  id    String        @id @default(cuid())
+  name  String
+  users group_users[]
 }
