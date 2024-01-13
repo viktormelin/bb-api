@@ -1,11 +1,7 @@
 import { Request, Response } from 'express';
-import expressAsyncHandler from 'express-async-handler';
 import { logger } from '../../utils/logger';
-import {
-  authRef,
-  getBearerToken,
-  headersFromToken,
-} from '../../utils/authorizer';
+import { authRef, getBearerToken } from '../../utils/authorizer';
+import prismaClient from '../../utils/prisma';
 
 const validateUser = async (req: Request, res: Response) => {
   const authToken = getBearerToken(req);
@@ -25,22 +21,51 @@ const validateUser = async (req: Request, res: Response) => {
     if (!data?.is_valid)
       return res.status(403).json({ error: 'Invalid JWT token' });
 
-    return res.status(200);
+    return res.status(200).send();
   } catch (error) {
     logger.error(error);
-    return res.status(403).json({ error: 'Invalid JWT token' });
+    return res.status(403).json({ error });
   }
 };
 
-const getSelf = expressAsyncHandler(async (req: Request, res: Response) => {
-  const { data, errors } = await authRef.getProfile(headersFromToken(req));
+const getProfile = async (req: Request, res: Response) => {
+  const userId = req.user?.sub;
 
-  if (errors.length) throw new Error(errors[0].message);
+  if (!userId) throw new Error('Failed to find id (sub) on user');
 
-  res.json(data).status(200);
-});
+  try {
+    const dbUser = await prismaClient.authorizer_users.findUnique({
+      where: { id: userId },
+      include: {
+        friends: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+              },
+            },
+          },
+        },
+        group_users: true,
+      },
+    });
+
+    const user = {
+      ...dbUser,
+      email_verified_at: Number(dbUser?.email_verified_at),
+      updated_at: Number(dbUser?.updated_at),
+      created_at: Number(dbUser?.created_at),
+    };
+
+    return res.json({ user }).status(200);
+  } catch (error) {
+    logger.error(error);
+    return res.status(403).json({ error });
+  }
+};
 
 export default {
   validateUser,
-  getSelf,
+  getProfile,
 };
