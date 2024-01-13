@@ -1,7 +1,6 @@
 import { Request, Response } from 'express';
 import { logger } from '../../utils/logger';
 import prismaClient from '../../utils/prisma';
-import { expenses, group_users } from '@prisma/client';
 
 const getMyGroups = async (req: Request, res: Response) => {
   const userId = req.user?.sub;
@@ -14,7 +13,11 @@ const getMyGroups = async (req: Request, res: Response) => {
         id: userId,
       },
       select: {
-        group_users: true,
+        group_users: {
+          include: {
+            groups: true,
+          },
+        },
       },
     });
 
