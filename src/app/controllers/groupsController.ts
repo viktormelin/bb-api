@@ -31,12 +31,13 @@ const getMyGroups = async (req: Request, res: Response) => {
 };
 
 const createNewGroup = async (req: Request, res: Response) => {
-  const { name, users, expense } = req.body;
+  const { group, users, expense } = req.body;
   const userId = req.user?.sub;
 
   if (!userId) throw new Error('Failed to find id (sub) on user');
 
-  if (!name) return res.status(400).json({ error: 'Missing group name' });
+  if (!group || group.name.length <= 0)
+    return res.status(400).json({ error: 'Missing group name' });
   if (!expense)
     return res.status(400).json({ error: 'Missing initial expense details' });
 
@@ -50,23 +51,17 @@ const createNewGroup = async (req: Request, res: Response) => {
       throw new Error(`Failed to find email of user requested [${userId}]`);
 
     const userQuery = [];
-    const expenseQuery = JSON.parse(expense);
-
-    if (!expenseQuery) throw new Error('Failed to decompile expense details');
 
     if (users && users.length > 0) {
-      const decompiled = JSON.parse(users) as string[];
-      if (!decompiled || decompiled.length <= 0) return;
-
-      for (const email of decompiled) {
-        if (userEmail.email === email) {
+      for (const user of users) {
+        if (userEmail.email === user.name) {
           userQuery.push({
-            user: { connect: { email } },
+            user: { connect: { email: user.name } },
             role: 'owner',
           });
         } else {
           userQuery.push({
-            user: { connect: { email } },
+            user: { connect: { email: user.name } },
             role: 'user',
           });
         }
@@ -78,22 +73,26 @@ const createNewGroup = async (req: Request, res: Response) => {
       });
     }
 
-    const group = await prismaClient.groups.create({
+    const dbGroup = await prismaClient.groups.create({
       data: {
-        name,
+        name: group.name,
         users: {
           create: [...userQuery],
         },
         expenses: {
-          create: expenseQuery,
+          create: {
+            money_total: Number(expense.money_total),
+            name: expense.name,
+          },
         },
       },
     });
 
-    if (!group)
+    if (!dbGroup)
       return res.status(500).json({ error: 'Failed to create new group' });
 
-    return res.status(201).json({ group });
+    logger.info(`${userId} created new group ${dbGroup.id}`);
+    return res.status(201).json({ group: dbGroup });
   } catch (error) {
     logger.error(error);
     return res
