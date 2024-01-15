@@ -134,13 +134,14 @@ model user_friends {
 }
 
 model expense_splits {
-  id            String      @id @default(cuid())
-  expense       expenses    @relation(fields: [expensesId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  user          group_users @relation(fields: [group_usersId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  money_total   Float
-  money_share   Int
-  expensesId    String
-  group_usersId String
+  id                  String      @id @default(cuid())
+  expense             expenses    @relation(fields: [expensesId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  user                group_users @relation(fields: [group_usersId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  money_total         Float
+  money_share_percent Float
+  money_share         Float
+  expensesId          String
+  group_usersId       String
 }
 
 model group_users {
