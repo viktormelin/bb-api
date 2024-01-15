@@ -129,44 +129,44 @@ model authorizer_webhooks {
 
 model user_friends {
   id                 String           @id @default(cuid())
-  user               authorizer_users @relation(fields: [authorizer_usersId], references: [id])
+  user               authorizer_users @relation(fields: [authorizer_usersId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   authorizer_usersId String           @db.Char(36)
 }
 
 model expense_splits {
-  id                 String      @id @default(cuid())
-  expense            expenses    @relation(fields: [expensesId], references: [id])
-  user               group_users @relation(fields: [group_usersId], references: [id])
-  money_total        Float
-  money_share        Int
-  expensesId         String
-  authorizer_usersId String      @db.Char(36)
-  group_usersId      String
+  id            String      @id @default(cuid())
+  expense       expenses    @relation(fields: [expensesId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  user          group_users @relation(fields: [group_usersId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  money_total   Float
+  money_share   Int
+  expensesId    String
+  group_usersId String
 }
 
 model group_users {
   id                 String           @id @default(cuid())
-  user               authorizer_users @relation(fields: [authorizer_usersId], references: [id])
+  user               authorizer_users @relation(fields: [authorizer_usersId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   role               String
   authorizer_usersId String           @db.Char(36)
-  groups             groups?          @relation(fields: [groupsId], references: [id])
+  groups             groups?          @relation(fields: [groupsId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   groupsId           String?
   expense_splits     expense_splits[]
 }
 
 model expenses {
-  id          String           @id @default(cuid())
-  name        String
-  description String?
-  money_total Float
-  money_split expense_splits[]
-  group       groups           @relation(fields: [groupsId], references: [id])
-  groupsId    String
+  id             String           @id @default(cuid())
+  name           String
+  description    String?
+  expense_total  Float            @default(0)
+  expense_splits expense_splits[]
+  group          groups           @relation(fields: [groupsId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  groupsId       String
 }
 
 model groups {
-  id       String        @id @default(cuid())
-  name     String
-  users    group_users[]
-  expenses expenses[]
+  id          String        @id @default(cuid())
+  name        String
+  invite_link String?       @default(cuid())
+  users       group_users[]
+  expenses    expenses[]
 }
