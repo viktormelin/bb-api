@@ -1,6 +1,9 @@
 import { Request, Response } from 'express';
 import prismaClient from '../../utils/prisma';
 import { logger } from '../../utils/logger';
+import { expense_splits, expenses } from '@prisma/client';
+
+type CombinedExpense = expenses & expense_splits;
 
 const getMyExpenses = async (req: Request, res: Response) => {
   const userId = req.user?.sub;
@@ -15,15 +18,28 @@ const getMyExpenses = async (req: Request, res: Response) => {
       select: {
         group_users: {
           include: {
-            expense_splits: true,
+            expense_splits: {
+              include: {
+                expense: true,
+              },
+            },
           },
         },
       },
     });
 
-    console.log(expenses);
+    if (!expenses || !expenses.group_users)
+      return res.status(404).json({ error: 'No groups found for the user' });
 
-    return res.status(200).json({ expenses: expenses?.group_users });
+    let compiledExpenses: any[] = [];
+
+    if (expenses.group_users.length > 0) {
+      for (const user of expenses.group_users) {
+        compiledExpenses = user.expense_splits.map((expense) => expense);
+      }
+    }
+
+    return res.status(200).json({ expenses: compiledExpenses });
   } catch (error) {
     logger.error(error);
     return res
