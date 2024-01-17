@@ -83,8 +83,8 @@ model authorizer_users {
   updated_at                   BigInt?
   created_at                   BigInt?
   app_data                     String?
-  group_users                  group_users[]
   friends                      user_friends[]
+  group_users                  group_users[]
 
   @@index([phone_number], map: "idx_authorizer_users_phone_number")
 }
@@ -136,36 +136,34 @@ model user_friends {
 model expense_splits {
   id            String      @id @default(cuid())
   expense       expenses    @relation(fields: [expensesId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  user          group_users @relation(fields: [group_usersId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  money_total   Float
-  money_share   Float
-  money_split   Int
+  group_user    group_users @relation(fields: [group_usersId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  percentage    Float
+  amount        Int
   expensesId    String
   group_usersId String
 }
 
 model group_users {
   id                 String           @id @default(cuid())
-  user               authorizer_users @relation(fields: [authorizer_usersId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  role               String
+  group_role         String           @default("user")
+  auth_user          authorizer_users @relation(fields: [authorizer_usersId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  expense_splits     expense_splits[]
   authorizer_usersId String           @db.Char(36)
+  expenses           expenses[]
   groups             groups?          @relation(fields: [groupsId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   groupsId           String?
-  expense_splits     expense_splits[]
-  expenses           expenses[]
 }
 
 model expenses {
-  id                 String           @id @default(cuid())
-  name               String
-  description        String?
-  initial_payers     group_users      @relation(fields: [group_usersId], references: [id])
-  expense_total      Float            @default(0)
-  expense_splits     expense_splits[]
-  group              groups           @relation(fields: [groupsId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  groupsId           String
-  authorizer_usersId String           @db.Char(36)
-  group_usersId      String
+  id              String           @id @default(cuid())
+  name            String
+  description     String?
+  initial_payer   group_users      @relation(fields: [group_usersId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  expense_total   Float            @default(0)
+  expense_splits  expense_splits[]
+  connected_group groups           @relation(fields: [groupsId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  groupsId        String
+  group_usersId   String
 }
 
 model groups {
