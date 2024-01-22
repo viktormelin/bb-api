@@ -1,9 +1,6 @@
 import { Request, Response } from 'express';
 import prismaClient from '../../utils/prisma';
 import { logger } from '../../utils/logger';
-import { expense_splits, expenses } from '@prisma/client';
-
-type CombinedExpense = expenses & expense_splits;
 
 const getMyExpenses = async (req: Request, res: Response) => {
   const userId = req.user?.sub;
