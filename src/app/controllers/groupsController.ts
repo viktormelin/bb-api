@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { logger } from '../../utils/logger';
 import prismaClient from '../../utils/prisma';
+import { calculateTransactions } from '../../utils/minimizeTransactions';
 
 const getMyGroups = async (req: Request, res: Response) => {
   const userId = req.user?.sub;
@@ -12,9 +13,10 @@ const getMyGroups = async (req: Request, res: Response) => {
       where: {
         id: userId,
       },
-      select: {
+      include: {
         group_users: {
           include: {
+            expenses: true,
             groups: {
               include: {
                 expenses: true,
@@ -27,6 +29,8 @@ const getMyGroups = async (req: Request, res: Response) => {
       },
     });
 
+    console.log(groups);
+
     return res.status(200).json({ groups: groups?.group_users });
   } catch (error) {
     logger.error(error);
@@ -36,15 +40,21 @@ const getMyGroups = async (req: Request, res: Response) => {
   }
 };
 
+interface RequestBody {
+  group: { name: string };
+  expense: { name: string; expense_total: number };
+}
 const createNewGroup = async (req: Request, res: Response) => {
-  const { group, users, expense } = req.body;
+  const { group, expense }: RequestBody = req.body;
   const userId = req.user?.sub;
+
+  // expense: { name: expenseName, expense_total: Number(expenseAmount) },
 
   if (!userId) throw new Error('Failed to find id (sub) on user');
 
   if (!group || group.name.length <= 0)
     return res.status(400).json({ error: 'Missing group name' });
-  if (!expense)
+  if (!expense || !Number(expense.expense_total) || !expense.name)
     return res.status(400).json({ error: 'Missing initial expense details' });
 
   try {
@@ -59,52 +69,57 @@ const createNewGroup = async (req: Request, res: Response) => {
     const dbGroup = await prismaClient.groups.create({
       data: {
         name: group.name,
-        users: {
+      },
+    });
+
+    const groupUser = await prismaClient.group_users.create({
+      data: {
+        group_role: 'owner',
+        auth_user: {
+          connect: {
+            email: userEmail.email,
+          },
+        },
+        groups: {
+          connect: {
+            id: dbGroup.id,
+          },
+        },
+      },
+    });
+
+    const groupExpense = await prismaClient.expenses.create({
+      data: {
+        name: expense.name,
+        initial_payer: {
+          connect: {
+            id: groupUser.id,
+          },
+        },
+        expense_total: expense.expense_total,
+        connected_group: {
+          connect: {
+            id: dbGroup.id,
+          },
+        },
+        expense_splits: {
           create: {
-            user: {
+            amount: expense.expense_total,
+            percentage: 100,
+            group_user: {
               connect: {
-                email: userEmail.email,
+                id: groupUser.id,
               },
             },
-            role: 'owner',
-          },
-        },
-        expenses: {
-          create: {
-            expense_total: Number(expense.expense_total),
-            name: expense.name,
           },
         },
       },
     });
 
-    if (!dbGroup)
-      return res.status(500).json({ error: 'Failed to create new group' });
-
-    const createdGroup = await prismaClient.groups.findUnique({
-      where: {
-        id: dbGroup.id,
-      },
-      include: {
-        expenses: true,
-        users: true,
-      },
-    });
-
-    const expensesId = createdGroup?.expenses[0].id;
-    const group_usersId = createdGroup?.users[0].id;
-
-    if (!expensesId || !group_usersId)
-      throw new Error('Failed to fetch required id(s) from database object');
-
-    await prismaClient.expense_splits.create({
-      data: {
-        expensesId,
-        group_usersId,
-        money_total: Number(expense.expense_total),
-        money_share: 1,
-      },
-    });
+    if (!groupExpense)
+      throw new Error(
+        'Failed to create expense. Check prisma error for more information',
+      );
 
     logger.info(`${userId} created new group ${dbGroup.id}`);
     return res.status(201).json({ group: dbGroup });
@@ -116,7 +131,131 @@ const createNewGroup = async (req: Request, res: Response) => {
   }
 };
 
+const getGroup = async (req: Request, res: Response) => {
+  const userId = req.user?.sub;
+  const groupId = req.params.slug;
+
+  if (!userId) throw new Error('Failed to find id (sub) on user');
+
+  if (!groupId) return res.status(400).json({ error: 'No group id specified' });
+
+  try {
+    const group = await prismaClient.groups.findUnique({
+      where: {
+        id: groupId,
+      },
+      include: {
+        expenses: {
+          include: {
+            initial_payer: true,
+            expense_splits: true,
+          },
+        },
+        users: {
+          include: {
+            auth_user: {
+              select: {
+                given_name: true,
+                family_name: true,
+                picture: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (group?.users.some((user) => user.authorizer_usersId === userId)) {
+      return res.status(200).json({ group });
+    } else {
+      return res
+        .status(403)
+        .json({ error: 'You are not a member of this group' });
+    }
+  } catch (error) {
+    logger.error(error);
+    return res
+      .status(500)
+      .json({ error: 'Something went wrong processing this request' });
+  }
+};
+
+const joinGroup = async (req: Request, res: Response) => {
+  const userId = req.user?.sub;
+  const joinToken = req.params.slug;
+
+  if (!userId) throw new Error('Failed to find id (sub) on user');
+
+  if (!joinToken)
+    return res.status(400).json({ error: 'No group id specified' });
+
+  try {
+    const groupId = await prismaClient.groups.findFirst({
+      where: {
+        invite_link: joinToken,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!groupId)
+      return res.status(400).json({ error: 'No group with that join token' });
+
+    const groups = await prismaClient.group_users.findMany({
+      where: {
+        authorizer_usersId: userId,
+      },
+      select: {
+        groupsId: true,
+      },
+    });
+
+    if (groups.some((v) => v.groupsId === groupId.id))
+      return res.status(400).json({ error: 'User is already in this group' });
+
+    const userEmail = await prismaClient.authorizer_users.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    });
+
+    if (!userEmail || !userEmail.email)
+      throw new Error(`Failed to find email of user requested [${userId}]`);
+
+    const groupUser = await prismaClient.group_users.create({
+      data: {
+        group_role: 'user',
+        auth_user: {
+          connect: {
+            email: userEmail.email,
+          },
+        },
+        groups: {
+          connect: {
+            id: groupId.id,
+          },
+        },
+      },
+    });
+
+    if (!groupUser)
+      throw new Error(
+        'Failed to create group user. Check prisma error for more information',
+      );
+
+    logger.info(`Connected ${userId} to ${groupId}`);
+    return res.status(201).json({ group: groupId });
+  } catch (error) {
+    logger.error(error);
+    return res
+      .status(500)
+      .json({ error: 'Something went wrong processing this request' });
+  }
+};
+
 export default {
   getMyGroups,
   createNewGroup,
+  getGroup,
+  joinGroup,
 };
