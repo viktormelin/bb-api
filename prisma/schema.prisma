@@ -139,6 +139,7 @@ model expense_splits {
   group_user    group_users @relation(fields: [group_usersId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   percentage    Float
   amount        Int
+  manual        Boolean     @default(false)
   expensesId    String
   group_usersId String
 }
