@@ -3,6 +3,31 @@ import prismaClient from '../../utils/prisma';
 import { logger } from '../../utils/logger';
 import { calculateTransactions } from '../../utils/minimizeTransactions';
 
+export const isPartOfGroup = async (userId: string, groupId: string) => {
+  try {
+    const userGroups = await prismaClient.authorizer_users.findUnique({
+      where: {
+        id: userId,
+      },
+      select: {
+        group_users: {
+          select: {
+            groupsId: true,
+          },
+        },
+      },
+    });
+
+    if (!userGroups?.group_users.some((group) => group.groupsId === groupId))
+      return false;
+
+    return true;
+  } catch (error) {
+    logger.error(error);
+    return false;
+  }
+};
+
 const getMyExpenses = async (req: Request, res: Response) => {
   const userId = req.user?.sub;
 
@@ -117,13 +142,13 @@ const getExpense = async (req: Request, res: Response) => {
   }
 };
 
-interface RequestBody {
+interface RequestBody1 {
   targetId: string;
   groupId: string;
   expenseId: string;
 }
 const addUserToExpense = async (req: Request, res: Response) => {
-  const { targetId, groupId, expenseId }: RequestBody = req.body;
+  const { targetId, groupId, expenseId }: RequestBody1 = req.body;
   const userId = req.user?.sub;
 
   if (!userId) throw new Error('Failed to find id (sub) on user');
@@ -136,20 +161,7 @@ const addUserToExpense = async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Missing target expense' });
 
   try {
-    const userGroups = await prismaClient.authorizer_users.findUnique({
-      where: {
-        id: userId,
-      },
-      select: {
-        group_users: {
-          select: {
-            groupsId: true,
-          },
-        },
-      },
-    });
-
-    if (!userGroups?.group_users.some((group) => group.groupsId === groupId))
+    if (!isPartOfGroup(userId, groupId))
       return res
         .status(403)
         .json({ error: 'You are not a member of this group' });
@@ -213,4 +225,197 @@ const addUserToExpense = async (req: Request, res: Response) => {
   }
 };
 
-export default { getMyExpenses, getExpense, addUserToExpense };
+interface RequestBody2 {
+  targetId: string;
+  groupId: string;
+  expenseId: string;
+  updatedSplit: string | number;
+}
+const editExpenseSplit = async (req: Request, res: Response) => {
+  const { targetId, groupId, expenseId, updatedSplit }: RequestBody2 = req.body;
+  const userId = req.user?.sub;
+
+  if (!userId) throw new Error('Failed to find id (sub) on user');
+
+  if (!targetId || targetId.length <= 0)
+    return res.status(400).json({ error: 'Missing target user' });
+  if (!groupId || groupId.length <= 0)
+    return res.status(400).json({ error: 'Missing target group' });
+  if (!expenseId || expenseId.length <= 0)
+    return res.status(400).json({ error: 'Missing target expense' });
+  if (!updatedSplit)
+    return res.status(400).json({ error: 'Missing update amount' });
+
+  if (Number(updatedSplit) > 100 || Number(updatedSplit) < 0)
+    return res.status(400).json({ error: 'Invalid amount specified' });
+
+  if (!isPartOfGroup(userId, groupId))
+    return res
+      .status(403)
+      .json({ error: 'You are not a member of this group' });
+
+  const dbExpense = await prismaClient.expenses.findUnique({
+    where: {
+      id: expenseId,
+    },
+    include: {
+      initial_payer: true,
+      expense_splits: {
+        include: {
+          group_user: true,
+        },
+      },
+    },
+  });
+
+  if (!dbExpense)
+    return res
+      .status(404)
+      .json({ error: 'Could not find expense with the provided ID' });
+
+  const oldSplits = dbExpense.expense_splits;
+  const nonManualSplits = oldSplits.filter((split) => !split.manual);
+  const manualSplits = oldSplits.filter((split) => split.manual);
+
+  const calculateAmounts = () => {
+    let nonManualSum = 0;
+    let nonManualPercent = 0;
+
+    let manualSum = 0;
+    let manualPercentage = 0;
+
+    for (const split of nonManualSplits) {
+      nonManualSum += split.amount;
+      nonManualPercent += split.percentage;
+    }
+    for (const split of manualSplits) {
+      manualSum += split.amount;
+      manualPercentage += split.percentage;
+    }
+
+    return { nonManualSum, nonManualPercent, manualSum, manualPercentage };
+  };
+
+  if (nonManualSplits.length > 0) {
+    // do any splits that are not manually set exist?
+    const targetSplitAmount =
+      dbExpense.expense_total * (Number(updatedSplit) / 100);
+    const calculatedAmounts = calculateAmounts();
+
+    const amountRest = calculatedAmounts.nonManualSum - targetSplitAmount;
+    const percentageRest =
+      calculatedAmounts.nonManualPercent - Number(updatedSplit);
+
+    let splitId = null;
+    const newSplits = oldSplits.map((split) => {
+      splitId = split.id;
+
+      if (split.group_usersId === targetId) {
+        return {
+          ...split,
+          percentage: updatedSplit,
+          amount: targetSplitAmount,
+          manual: true,
+        };
+      } else if (split.manual) {
+        return split;
+      } else {
+        return {
+          ...split,
+          percentage: percentageRest / (nonManualSplits.length - 1),
+          amount: amountRest / (nonManualSplits.length - 1),
+          manual: false,
+        };
+      }
+    });
+
+    console.log(newSplits);
+
+    const sumOfNewSplits = newSplits.reduce(
+      (sum, p) => sum + Number(p.amount),
+      0,
+    );
+
+    console.log(sumOfNewSplits);
+
+    if (sumOfNewSplits === dbExpense.expense_total) {
+      if (!splitId)
+        throw new Error('Failed to find ID of expense split while mapping');
+
+      for (const split of newSplits) {
+        await prismaClient.expense_splits.update({
+          where: {
+            id: split.id,
+          },
+          data: {
+            percentage: Number(split.percentage),
+            amount: split.amount,
+            manual: split.manual,
+          },
+        });
+      }
+
+      return res.status(200).send('Successfully updated split');
+    } else {
+      return res
+        .status(400)
+        .json({ error: 'Values provided for amount does not match total sum' });
+    }
+  } else {
+    // no splits exists that are not manually set, check if amount is allowed instead
+    const splitAmount = dbExpense.expense_total * (Number(updatedSplit) / 100);
+    let splitId = null;
+
+    const newSplits = oldSplits.map((split) => {
+      splitId = split.id;
+
+      if (split.group_usersId === targetId) {
+        return {
+          ...split,
+          percentage: updatedSplit,
+          amount: splitAmount,
+          manual: true,
+        };
+      } else {
+        return split;
+      }
+    });
+
+    const sumOfNewSplits = newSplits.reduce(
+      (sum, p) => sum + Number(p.amount),
+      0,
+    );
+
+    if (sumOfNewSplits === dbExpense.expense_total) {
+      if (!splitId)
+        throw new Error('Failed to find ID of expense split while mapping');
+
+      const updatedExpenseSplit = await prismaClient.expense_splits.update({
+        where: {
+          id: splitId,
+        },
+        data: {
+          percentage: Number(updatedSplit),
+          amount: splitAmount,
+          manual: true,
+        },
+      });
+
+      if (updatedExpenseSplit)
+        return res.status(200).send('Successfully updated split');
+
+      return res.status(500).json({ error: 'Something went wrong' });
+    } else {
+      return res
+        .status(400)
+        .json({ error: 'Values provided for amount does not match total sum' });
+    }
+  }
+};
+
+export default {
+  getMyExpenses,
+  getExpense,
+  addUserToExpense,
+  editExpenseSplit,
+};
