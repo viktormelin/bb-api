@@ -1,10 +1,9 @@
 import { Logtail } from '@logtail/node';
 import { LogtailTransport } from '@logtail/winston';
 import winston from 'winston';
-import { config } from './config';
 
 const { combine, errors, json } = winston.format;
-const logtail = new Logtail(config?.LOGGER_TOKEN || '');
+const logtail = new Logtail(process.env.LOGGER_TOKEN || '');
 export const logger = winston.createLogger({
   level: 'info',
   format: combine(errors({ stack: true }), json()),
