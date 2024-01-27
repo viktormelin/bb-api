@@ -2,9 +2,9 @@ import { Authorizer } from '@authorizerdev/authorizer-js';
 import { Request } from 'express';
 
 export const authRef = new Authorizer({
-  authorizerURL: 'https://auth.billbuddies.app',
-  redirectURL: 'https://billbuddies.app/dashboard',
-  clientID: '2df42098-a689-4c65-97db-74ed796e5beb',
+  authorizerURL: process.env.AUTH_URL || '',
+  redirectURL: process.env.AUTH_REDIRECT_URL || '',
+  clientID: process.env.AUTH_CLIENTID || '',
 });
 
 export const headersFromToken = (req: Request) => {

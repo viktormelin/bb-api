@@ -1,11 +1,11 @@
+import './utils/loadEnv';
 import express, { json, urlencoded } from 'express';
 import cors from 'cors';
 import routes from './routes';
 import { createServer } from 'http';
 import { logger } from './utils/logger';
-import { config } from './utils/config';
 
-const port = Number(config.PORT);
+const port = process.env.PORT || 3000;
 const app = express();
 const server = createServer(app);
 
@@ -28,8 +28,7 @@ for (const version of routeVersions) {
   }
 }
 
-server.listen(
-  port,
-  () => console.log(`Server started on port ${port}`),
-  // () => logger.info(`Server started on port ${port}`),
-);
+server.listen(port, () => {
+  console.log(`Server started on port ${port}`);
+  logger.info(`Server started on port ${port}`);
+});
