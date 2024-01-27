@@ -2,9 +2,9 @@ import { Authorizer } from '@authorizerdev/authorizer-js';
 import { Request } from 'express';
 
 export const authRef = new Authorizer({
-  authorizerURL: process.env.AUTH_URL,
-  redirectURL: process.env.AUTH_REDIRECT_URL,
-  clientID: process.env.AUTH_CLIENTID,
+  authorizerURL: process.env.AUTH_URL || '',
+  redirectURL: process.env.AUTH_REDIRECT_URL || '',
+  clientID: process.env.AUTH_CLIENTID || '',
 });
 
 export const headersFromToken = (req: Request) => {
