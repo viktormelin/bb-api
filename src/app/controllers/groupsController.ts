@@ -1,7 +1,10 @@
 import { Request, Response } from 'express';
 import { logger } from '../../utils/logger';
 import prismaClient from '../../utils/prisma';
-import { calculateTransactions } from '../../utils/minimizeTransactions';
+import {
+  IExpense,
+  calculateTransactions,
+} from '../../utils/minimizeTransactions';
 
 const getMyGroups = async (req: Request, res: Response) => {
   const userId = req.user?.sub;
@@ -28,8 +31,6 @@ const getMyGroups = async (req: Request, res: Response) => {
         },
       },
     });
-
-    console.log(groups);
 
     return res.status(200).json({ groups: groups?.group_users });
   } catch (error) {
@@ -253,9 +254,57 @@ const joinGroup = async (req: Request, res: Response) => {
   }
 };
 
+const calculateGroupSplits = async (req: Request, res: Response) => {
+  const userId = req.user?.sub;
+  const groupId = req.params.slug;
+
+  if (!userId) throw new Error('Failed to find id (sub) on user');
+
+  if (!groupId) return res.status(400).json({ error: 'No group id specified' });
+
+  try {
+    const group = await prismaClient.groups.findUnique({
+      where: {
+        id: groupId,
+      },
+      include: {
+        expenses: {
+          include: {
+            initial_payer: true,
+            expense_splits: true,
+          },
+        },
+      },
+    });
+
+    if (!group?.expenses || group.expenses.length <= 0)
+      return res.status(400).json({ error: 'This group has no expenses' });
+
+    const calculatedSplitsData: IExpense[] = [];
+
+    for (const expense of group.expenses) {
+      calculatedSplitsData.push({
+        ...expense,
+        initial_payer: expense.initial_payer,
+        expense_splits: expense.expense_splits,
+      });
+    }
+
+    const calculatedSplits = calculateTransactions(calculatedSplitsData);
+
+    return res.status(200).json({ data: calculatedSplits });
+  } catch (error) {
+    logger.error(error);
+    return res
+      .status(500)
+      .json({ error: 'Something went wrong processing this request' });
+  }
+};
+
 export default {
   getMyGroups,
   createNewGroup,
   getGroup,
   joinGroup,
+  calculateGroupSplits,
 };
