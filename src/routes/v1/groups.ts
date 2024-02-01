@@ -8,5 +8,10 @@ router.get('/', authMiddleware, groupsController.getMyGroups);
 router.post('/new', authMiddleware, groupsController.createNewGroup);
 router.get('/:slug', authMiddleware, groupsController.getGroup);
 router.post('/join/:slug', authMiddleware, groupsController.joinGroup);
+router.post(
+  '/calculate/:slug',
+  authMiddleware,
+  groupsController.calculateGroupSplits,
+);
 
 export default router;

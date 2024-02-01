@@ -2,7 +2,7 @@
 
 import type { expense_splits, expenses, group_users } from '@prisma/client';
 
-interface IExpense extends expenses {
+export interface IExpense extends expenses {
   initial_payer: group_users;
   expense_splits: expense_splits[];
 }
