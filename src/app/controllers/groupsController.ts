@@ -318,28 +318,22 @@ const settleGroupExpenses = async (req: Request, res: Response) => {
       .json({ error: 'You are not a member of this group' });
 
   try {
-    const group = await prismaClient.groups.findUnique({
-      where: {
-        id: groupId,
-      },
-      include: {
-        expenses: true,
-      },
-    });
-
-    if (!group?.expenses || group.expenses.length <= 0)
-      return res.status(400).json({ error: 'This group has no expenses' });
-
-    const updatedGroupExpenses = group.expenses.map((expense) => ({
-      ...expense,
-      settled: true,
-    }));
-
     const updatedGroup = await prismaClient.groups.update({
       where: {
         id: groupId,
       },
-      data: updatedGroupExpenses,
+      data: {
+        expenses: {
+          updateMany: {
+            where: {
+              settled: false,
+            },
+            data: {
+              settled: true,
+            },
+          },
+        },
+      },
     });
 
     if (!updatedGroup) throw new Error('Failed to update group');
