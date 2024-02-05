@@ -5,6 +5,7 @@ import {
   IExpense,
   calculateTransactions,
 } from '../../utils/minimizeTransactions';
+import { isPartOfGroup } from '../../utils/authorizer';
 
 const getMyGroups = async (req: Request, res: Response) => {
   const userId = req.user?.sub;
@@ -134,7 +135,7 @@ const createNewGroup = async (req: Request, res: Response) => {
 
 const getGroup = async (req: Request, res: Response) => {
   const userId = req.user?.sub;
-  const groupId = req.params.slug;
+  const groupId = req.params.id;
 
   if (!userId) throw new Error('Failed to find id (sub) on user');
 
@@ -183,7 +184,7 @@ const getGroup = async (req: Request, res: Response) => {
 
 const joinGroup = async (req: Request, res: Response) => {
   const userId = req.user?.sub;
-  const joinToken = req.params.slug;
+  const joinToken = req.params.id;
 
   if (!userId) throw new Error('Failed to find id (sub) on user');
 
@@ -256,7 +257,7 @@ const joinGroup = async (req: Request, res: Response) => {
 
 const calculateGroupSplits = async (req: Request, res: Response) => {
   const userId = req.user?.sub;
-  const groupId = req.params.slug;
+  const groupId = req.params.id;
 
   if (!userId) throw new Error('Failed to find id (sub) on user');
 
@@ -301,10 +302,59 @@ const calculateGroupSplits = async (req: Request, res: Response) => {
   }
 };
 
+const settleGroupExpenses = async (req: Request, res: Response) => {
+  const userId = req.user?.sub;
+  const groupId = req.params.id;
+
+  if (!userId) throw new Error('Failed to find id (sub) on user');
+
+  if (!groupId) return res.status(400).json({ error: 'No group id specified' });
+
+  if (!isPartOfGroup(userId, groupId))
+    return res
+      .status(403)
+      .json({ error: 'You are not a member of this group' });
+
+  try {
+    const group = await prismaClient.groups.findUnique({
+      where: {
+        id: groupId,
+      },
+      include: {
+        expenses: true,
+      },
+    });
+
+    if (!group?.expenses || group.expenses.length <= 0)
+      return res.status(400).json({ error: 'This group has no expenses' });
+
+    const updatedGroupExpenses = group.expenses.map((expense) => ({
+      ...expense,
+      settled: true,
+    }));
+
+    const updatedGroup = await prismaClient.groups.update({
+      where: {
+        id: groupId,
+      },
+      data: updatedGroupExpenses,
+    });
+
+    if (!updatedGroup) throw new Error('Failed to update group');
+    return res.status(200).send('Settled all expenses');
+  } catch (error) {
+    logger.error(error);
+    return res
+      .status(500)
+      .json({ error: 'Something went wrong processing this request' });
+  }
+};
+
 export default {
   getMyGroups,
   createNewGroup,
   getGroup,
   joinGroup,
   calculateGroupSplits,
+  settleGroupExpenses,
 };
