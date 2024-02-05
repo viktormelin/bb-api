@@ -5,6 +5,7 @@ import {
   IExpense,
   calculateTransactions,
 } from '../../utils/minimizeTransactions';
+import { isPartOfGroup } from '../../utils/authorizer';
 
 const getMyGroups = async (req: Request, res: Response) => {
   const userId = req.user?.sub;
@@ -134,7 +135,7 @@ const createNewGroup = async (req: Request, res: Response) => {
 
 const getGroup = async (req: Request, res: Response) => {
   const userId = req.user?.sub;
-  const groupId = req.params.slug;
+  const groupId = req.params.id;
 
   if (!userId) throw new Error('Failed to find id (sub) on user');
 
@@ -183,7 +184,7 @@ const getGroup = async (req: Request, res: Response) => {
 
 const joinGroup = async (req: Request, res: Response) => {
   const userId = req.user?.sub;
-  const joinToken = req.params.slug;
+  const joinToken = req.params.id;
 
   if (!userId) throw new Error('Failed to find id (sub) on user');
 
@@ -256,7 +257,7 @@ const joinGroup = async (req: Request, res: Response) => {
 
 const calculateGroupSplits = async (req: Request, res: Response) => {
   const userId = req.user?.sub;
-  const groupId = req.params.slug;
+  const groupId = req.params.id;
 
   if (!userId) throw new Error('Failed to find id (sub) on user');
 
@@ -283,16 +284,60 @@ const calculateGroupSplits = async (req: Request, res: Response) => {
     const calculatedSplitsData: IExpense[] = [];
 
     for (const expense of group.expenses) {
-      calculatedSplitsData.push({
-        ...expense,
-        initial_payer: expense.initial_payer,
-        expense_splits: expense.expense_splits,
-      });
+      if (!expense.settled) {
+        calculatedSplitsData.push({
+          ...expense,
+          initial_payer: expense.initial_payer,
+          expense_splits: expense.expense_splits,
+        });
+      }
     }
 
     const calculatedSplits = calculateTransactions(calculatedSplitsData);
 
     return res.status(200).json({ data: calculatedSplits });
+  } catch (error) {
+    logger.error(error);
+    return res
+      .status(500)
+      .json({ error: 'Something went wrong processing this request' });
+  }
+};
+
+const settleGroupExpenses = async (req: Request, res: Response) => {
+  const userId = req.user?.sub;
+  const groupId = req.params.id;
+
+  if (!userId) throw new Error('Failed to find id (sub) on user');
+
+  if (!groupId) return res.status(400).json({ error: 'No group id specified' });
+
+  if (!isPartOfGroup(userId, groupId))
+    return res
+      .status(403)
+      .json({ error: 'You are not a member of this group' });
+
+  try {
+    const updatedGroup = await prismaClient.groups.update({
+      where: {
+        id: groupId,
+      },
+      data: {
+        expenses: {
+          updateMany: {
+            where: {
+              settled: false,
+            },
+            data: {
+              settled: true,
+            },
+          },
+        },
+      },
+    });
+
+    if (!updatedGroup) throw new Error('Failed to update group');
+    return res.status(200).send('Settled all expenses');
   } catch (error) {
     logger.error(error);
     return res
@@ -307,4 +352,5 @@ export default {
   getGroup,
   joinGroup,
   calculateGroupSplits,
+  settleGroupExpenses,
 };

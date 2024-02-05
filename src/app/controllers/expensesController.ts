@@ -2,31 +2,7 @@ import { Request, Response } from 'express';
 import prismaClient from '../../utils/prisma';
 import { logger } from '../../utils/logger';
 import { calculateTransactions } from '../../utils/minimizeTransactions';
-
-export const isPartOfGroup = async (userId: string, groupId: string) => {
-  try {
-    const userGroups = await prismaClient.authorizer_users.findUnique({
-      where: {
-        id: userId,
-      },
-      select: {
-        group_users: {
-          select: {
-            groupsId: true,
-          },
-        },
-      },
-    });
-
-    if (!userGroups?.group_users.some((group) => group.groupsId === groupId))
-      return false;
-
-    return true;
-  } catch (error) {
-    logger.error(error);
-    return false;
-  }
-};
+import { isPartOfGroup } from '../../utils/authorizer';
 
 const getMyExpenses = async (req: Request, res: Response) => {
   const userId = req.user?.sub;
@@ -510,10 +486,72 @@ const createExpense = async (req: Request, res: Response) => {
   }
 };
 
+const resetExpense = async (req: Request, res: Response) => {
+  const userId = req.user?.sub;
+  const expenseId = req.params.id;
+
+  if (!userId) throw new Error('Failed to find id (sub) on user');
+
+  if (!expenseId)
+    return res.status(400).json({ error: 'No group id specified' });
+
+  const dbExpense = await prismaClient.expenses.findUnique({
+    where: {
+      id: expenseId,
+    },
+    include: {
+      initial_payer: true,
+      expense_splits: {
+        include: {
+          group_user: true,
+        },
+      },
+    },
+  });
+
+  if (!dbExpense?.groupsId)
+    throw new Error('Failed to find id of group associated with this expense');
+
+  if (!isPartOfGroup(userId, dbExpense?.groupsId))
+    return res
+      .status(403)
+      .json({ error: 'You are not a member of this group' });
+
+  try {
+    const totSum = dbExpense.expense_total;
+    const totPayers = dbExpense.expense_splits.length;
+
+    const eachAmount = totSum / totPayers;
+    const eachPercentage = 100 / totPayers;
+
+    for (const split of dbExpense.expense_splits) {
+      await prismaClient.expense_splits.update({
+        where: {
+          id: split.id,
+        },
+        data: {
+          percentage: eachPercentage,
+          amount: eachAmount,
+          manual: false,
+        },
+      });
+    }
+
+    logger.info(`${userId} reset expense ${expenseId}`);
+    return res.status(200).send('Successfully reset splits');
+  } catch (error) {
+    logger.error(error);
+    return res
+      .status(500)
+      .json({ error: 'Something went wrong processing this request' });
+  }
+};
+
 export default {
   getMyExpenses,
   getExpense,
   addUserToExpense,
   editExpenseSplit,
   createExpense,
+  resetExpense,
 };
