@@ -284,11 +284,13 @@ const calculateGroupSplits = async (req: Request, res: Response) => {
     const calculatedSplitsData: IExpense[] = [];
 
     for (const expense of group.expenses) {
-      calculatedSplitsData.push({
-        ...expense,
-        initial_payer: expense.initial_payer,
-        expense_splits: expense.expense_splits,
-      });
+      if (!expense.settled) {
+        calculatedSplitsData.push({
+          ...expense,
+          initial_payer: expense.initial_payer,
+          expense_splits: expense.expense_splits,
+        });
+      }
     }
 
     const calculatedSplits = calculateTransactions(calculatedSplitsData);
