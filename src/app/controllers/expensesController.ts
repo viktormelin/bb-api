@@ -2,31 +2,7 @@ import { Request, Response } from 'express';
 import prismaClient from '../../utils/prisma';
 import { logger } from '../../utils/logger';
 import { calculateTransactions } from '../../utils/minimizeTransactions';
-
-export const isPartOfGroup = async (userId: string, groupId: string) => {
-  try {
-    const userGroups = await prismaClient.authorizer_users.findUnique({
-      where: {
-        id: userId,
-      },
-      select: {
-        group_users: {
-          select: {
-            groupsId: true,
-          },
-        },
-      },
-    });
-
-    if (!userGroups?.group_users.some((group) => group.groupsId === groupId))
-      return false;
-
-    return true;
-  } catch (error) {
-    logger.error(error);
-    return false;
-  }
-};
+import { isPartOfGroup } from '../../utils/authorizer';
 
 const getMyExpenses = async (req: Request, res: Response) => {
   const userId = req.user?.sub;
