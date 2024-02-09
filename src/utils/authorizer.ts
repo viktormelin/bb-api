@@ -39,7 +39,9 @@ export const isPartOfGroup = async (userId: string, groupId: string) => {
       },
     });
 
-    if (!userGroups?.group_users.some((group) => group.groupsId === groupId))
+    if (
+      !userGroups?.group_users.some((group: any) => group.groupsId === groupId)
+    )
       return false;
 
     return true;
