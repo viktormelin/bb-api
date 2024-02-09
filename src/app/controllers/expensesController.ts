@@ -206,9 +206,11 @@ interface RequestBody2 {
   groupId: string;
   expenseId: string;
   updatedSplit: string | number;
+  type: 'percentage' | 'amount';
 }
 const editExpenseSplit = async (req: Request, res: Response) => {
-  const { targetId, groupId, expenseId, updatedSplit }: RequestBody2 = req.body;
+  const { targetId, groupId, expenseId, updatedSplit, type }: RequestBody2 =
+    req.body;
   const userId = req.user?.sub;
 
   if (!userId) throw new Error('Failed to find id (sub) on user');
@@ -221,8 +223,12 @@ const editExpenseSplit = async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Missing target expense' });
   if (!updatedSplit)
     return res.status(400).json({ error: 'Missing update amount' });
+  if (!type) return res.status(400).json({ error: 'Missing update type' });
 
-  if (Number(updatedSplit) > 100 || Number(updatedSplit) < 0)
+  if (
+    type === 'percentage' &&
+    (Number(updatedSplit) > 100 || Number(updatedSplit) < 0)
+  )
     return res.status(400).json({ error: 'Invalid amount specified' });
 
   if (!isPartOfGroup(userId, groupId))
@@ -249,138 +255,294 @@ const editExpenseSplit = async (req: Request, res: Response) => {
       .status(404)
       .json({ error: 'Could not find expense with the provided ID' });
 
-  const oldSplits = dbExpense.expense_splits;
-  const nonManualSplits = oldSplits.filter((split) => !split.manual);
-  const manualSplits = oldSplits.filter((split) => split.manual);
+  if (type === 'percentage') {
+    const oldSplits = dbExpense.expense_splits;
+    const nonManualSplits = oldSplits.filter((split) => !split.manual);
+    const manualSplits = oldSplits.filter((split) => split.manual);
 
-  const calculateAmounts = () => {
-    let nonManualSum = 0;
-    let nonManualPercent = 0;
+    const calculateAmounts = () => {
+      let nonManualSum = 0;
+      let nonManualPercent = 0;
 
-    let manualSum = 0;
-    let manualPercentage = 0;
+      let manualSum = 0;
+      let manualPercentage = 0;
 
-    for (const split of nonManualSplits) {
-      nonManualSum += split.amount;
-      nonManualPercent += split.percentage;
-    }
-    for (const split of manualSplits) {
-      manualSum += split.amount;
-      manualPercentage += split.percentage;
-    }
-
-    return { nonManualSum, nonManualPercent, manualSum, manualPercentage };
-  };
-
-  if (nonManualSplits.length > 0) {
-    // do any splits that are not manually set exist?
-    const targetSplitAmount =
-      dbExpense.expense_total * (Number(updatedSplit) / 100);
-    const calculatedAmounts = calculateAmounts();
-
-    const amountRest = calculatedAmounts.nonManualSum - targetSplitAmount;
-    const percentageRest =
-      calculatedAmounts.nonManualPercent - Number(updatedSplit);
-
-    let splitId = null;
-    const newSplits = oldSplits.map((split) => {
-      splitId = split.id;
-
-      if (split.group_usersId === targetId) {
-        return {
-          ...split,
-          percentage: updatedSplit,
-          amount: targetSplitAmount,
-          manual: true,
-        };
-      } else if (split.manual) {
-        return split;
-      } else {
-        return {
-          ...split,
-          percentage: percentageRest / (nonManualSplits.length - 1),
-          amount: amountRest / (nonManualSplits.length - 1),
-          manual: false,
-        };
+      for (const split of nonManualSplits) {
+        nonManualSum += split.amount;
+        nonManualPercent += split.percentage;
       }
-    });
-
-    const sumOfNewSplits = newSplits.reduce(
-      (sum, p) => sum + Number(p.amount),
-      0,
-    );
-
-    if (sumOfNewSplits === dbExpense.expense_total) {
-      if (!splitId)
-        throw new Error('Failed to find ID of expense split while mapping');
-
-      for (const split of newSplits) {
-        await prismaClient.expense_splits.update({
-          where: {
-            id: split.id,
-          },
-          data: {
-            percentage: Number(split.percentage),
-            amount: split.amount,
-            manual: split.manual,
-          },
-        });
+      for (const split of manualSplits) {
+        manualSum += split.amount;
+        manualPercentage += split.percentage;
       }
 
-      return res.status(200).send('Successfully updated split');
-    } else {
-      return res
-        .status(400)
-        .json({ error: 'Values provided for amount does not match total sum' });
-    }
-  } else {
-    // no splits exists that are not manually set, check if amount is allowed instead
-    const splitAmount = dbExpense.expense_total * (Number(updatedSplit) / 100);
-    let splitId = null;
+      return { nonManualSum, nonManualPercent, manualSum, manualPercentage };
+    };
 
-    const newSplits = oldSplits.map((split) => {
-      splitId = split.id;
+    if (nonManualSplits.length > 0) {
+      // do any splits that are not manually set exist?
+      const targetSplitAmount =
+        dbExpense.expense_total * (Number(updatedSplit) / 100);
+      const calculatedAmounts = calculateAmounts();
 
-      if (split.group_usersId === targetId) {
-        return {
-          ...split,
-          percentage: updatedSplit,
-          amount: splitAmount,
-          manual: true,
-        };
-      } else {
-        return split;
-      }
-    });
+      const amountRest = calculatedAmounts.nonManualSum - targetSplitAmount;
+      const percentageRest =
+        calculatedAmounts.nonManualPercent - Number(updatedSplit);
 
-    const sumOfNewSplits = newSplits.reduce(
-      (sum, p) => sum + Number(p.amount),
-      0,
-    );
+      let splitId = null;
+      const newSplits = oldSplits.map((split) => {
+        splitId = split.id;
 
-    if (sumOfNewSplits === dbExpense.expense_total) {
-      if (!splitId)
-        throw new Error('Failed to find ID of expense split while mapping');
-
-      const updatedExpenseSplit = await prismaClient.expense_splits.update({
-        where: {
-          id: splitId,
-        },
-        data: {
-          percentage: Number(updatedSplit),
-          amount: splitAmount,
-          manual: true,
-        },
+        if (split.group_usersId === targetId) {
+          return {
+            ...split,
+            percentage: updatedSplit,
+            amount: targetSplitAmount,
+            manual: true,
+          };
+        } else if (split.manual) {
+          return split;
+        } else {
+          return {
+            ...split,
+            percentage: percentageRest / (nonManualSplits.length - 1),
+            amount: amountRest / (nonManualSplits.length - 1),
+            manual: false,
+          };
+        }
       });
 
-      if (updatedExpenseSplit)
-        return res.status(200).send('Successfully updated split');
+      const sumOfNewSplits = newSplits.reduce(
+        (sum, p) => sum + Number(p.amount),
+        0,
+      );
 
-      return res.status(500).json({ error: 'Something went wrong' });
+      if (sumOfNewSplits === dbExpense.expense_total) {
+        if (!splitId)
+          throw new Error('Failed to find ID of expense split while mapping');
+
+        for (const split of newSplits) {
+          await prismaClient.expense_splits.update({
+            where: {
+              id: split.id,
+            },
+            data: {
+              percentage: Number(split.percentage),
+              amount: split.amount,
+              manual: split.manual,
+            },
+          });
+        }
+
+        return res.status(200).send('Successfully updated split');
+      } else {
+        return res.status(400).json({
+          error: 'Values provided for amount does not match total sum',
+        });
+      }
     } else {
-      return res
-        .status(400)
-        .json({ error: 'Values provided for amount does not match total sum' });
+      // no splits exists that are not manually set, check if amount is allowed instead
+      const splitAmount =
+        dbExpense.expense_total * (Number(updatedSplit) / 100);
+      let splitId = null;
+
+      const newSplits = oldSplits.map((split) => {
+        splitId = split.id;
+
+        if (split.group_usersId === targetId) {
+          return {
+            ...split,
+            percentage: updatedSplit,
+            amount: splitAmount,
+            manual: true,
+          };
+        } else {
+          return split;
+        }
+      });
+
+      const sumOfNewSplits = newSplits.reduce(
+        (sum, p) => sum + Number(p.amount),
+        0,
+      );
+
+      if (sumOfNewSplits === dbExpense.expense_total) {
+        if (!splitId)
+          throw new Error('Failed to find ID of expense split while mapping');
+
+        const updatedExpenseSplit = await prismaClient.expense_splits.update({
+          where: {
+            id: splitId,
+          },
+          data: {
+            percentage: Number(updatedSplit),
+            amount: splitAmount,
+            manual: true,
+          },
+        });
+
+        if (updatedExpenseSplit)
+          return res.status(200).send('Successfully updated split');
+
+        return res.status(500).json({ error: 'Something went wrong' });
+      } else {
+        return res.status(400).json({
+          error: 'Values provided for amount does not match total sum',
+        });
+      }
+    }
+  } else if (type === 'amount') {
+    const oldSplits = dbExpense.expense_splits;
+    const nonManualSplits = oldSplits.filter((split) => !split.manual);
+    const manualSplits = oldSplits.filter((split) => split.manual);
+
+    const calculateAmounts = () => {
+      let nonManualSum = 0;
+      let nonManualPercent = 0;
+
+      let manualSum = 0;
+      let manualPercentage = 0;
+
+      for (const split of nonManualSplits) {
+        nonManualSum += split.amount;
+        nonManualPercent += split.percentage;
+      }
+      for (const split of manualSplits) {
+        manualSum += split.amount;
+        manualPercentage += split.percentage;
+      }
+
+      return { nonManualSum, nonManualPercent, manualSum, manualPercentage };
+    };
+
+    if (nonManualSplits.length > 0) {
+      // do any splits that are not manually set exist?
+
+      const updatedSplitInPercent =
+        (Number(updatedSplit) / dbExpense.expense_total) * 100;
+
+      const targetSplitAmount =
+        dbExpense.expense_total * (Number(updatedSplitInPercent) / 100);
+      const calculatedAmounts = calculateAmounts();
+
+      const amountRest = calculatedAmounts.nonManualSum - targetSplitAmount;
+      const percentageRest =
+        calculatedAmounts.nonManualPercent - Number(updatedSplitInPercent);
+
+      console.log(
+        updatedSplit,
+        updatedSplitInPercent,
+        targetSplitAmount,
+        calculateAmounts,
+        amountRest,
+        percentageRest,
+      );
+
+      let splitId = null;
+      const newSplits = oldSplits.map((split) => {
+        splitId = split.id;
+
+        if (split.group_usersId === targetId) {
+          return {
+            ...split,
+            percentage: updatedSplitInPercent,
+            amount: targetSplitAmount,
+            manual: true,
+          };
+        } else if (split.manual) {
+          return split;
+        } else {
+          return {
+            ...split,
+            percentage: percentageRest / (nonManualSplits.length - 1),
+            amount: amountRest / (nonManualSplits.length - 1),
+            manual: false,
+          };
+        }
+      });
+
+      const sumOfNewSplits = newSplits.reduce(
+        (sum, p) => sum + Number(p.amount),
+        0,
+      );
+
+      if (sumOfNewSplits === dbExpense.expense_total) {
+        if (!splitId)
+          throw new Error('Failed to find ID of expense split while mapping');
+
+        for (const split of newSplits) {
+          await prismaClient.expense_splits.update({
+            where: {
+              id: split.id,
+            },
+            data: {
+              percentage: Number(split.percentage),
+              amount: split.amount,
+              manual: split.manual,
+            },
+          });
+        }
+
+        return res.status(200).send('Successfully updated split');
+      } else {
+        return res.status(400).json({
+          error: 'Values provided for amount does not match total sum',
+        });
+      }
+    } else {
+      // no splits exists that are not manually set, check if amount is allowed instead
+
+      const updatedSplitInPercent =
+        Number(updatedSplit) / dbExpense.expense_total;
+
+      const splitAmount =
+        dbExpense.expense_total * (Number(updatedSplitInPercent) / 100);
+      let splitId = null;
+
+      const newSplits = oldSplits.map((split) => {
+        splitId = split.id;
+
+        if (split.group_usersId === targetId) {
+          return {
+            ...split,
+            percentage: updatedSplitInPercent,
+            amount: splitAmount,
+            manual: true,
+          };
+        } else {
+          return split;
+        }
+      });
+
+      const sumOfNewSplits = newSplits.reduce(
+        (sum, p) => sum + Number(p.amount),
+        0,
+      );
+
+      if (sumOfNewSplits === dbExpense.expense_total) {
+        if (!splitId)
+          throw new Error('Failed to find ID of expense split while mapping');
+
+        const updatedExpenseSplit = await prismaClient.expense_splits.update({
+          where: {
+            id: splitId,
+          },
+          data: {
+            percentage: Number(updatedSplitInPercent),
+            amount: splitAmount,
+            manual: true,
+          },
+        });
+
+        if (updatedExpenseSplit)
+          return res.status(200).send('Successfully updated split');
+
+        return res.status(500).json({ error: 'Something went wrong' });
+      } else {
+        return res.status(400).json({
+          error: 'Values provided for amount does not match total sum',
+        });
+      }
     }
   }
 };
