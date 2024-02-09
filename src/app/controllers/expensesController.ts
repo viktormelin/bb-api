@@ -34,7 +34,7 @@ const getMyExpenses = async (req: Request, res: Response) => {
 
     if (expenses.group_users.length > 0) {
       for (const user of expenses.group_users) {
-        compiledExpenses = user.expense_splits.map((expense) => expense);
+        user.expense_splits.map((expense) => compiledExpenses.push(expense));
       }
     }
 
